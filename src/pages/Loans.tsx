@@ -217,8 +217,19 @@ const Loans = () => {
               <div className="text-sm text-muted-foreground">
                 Total due: <strong>{totalDue(payLoan).toLocaleString()}</strong> · Already paid: <strong>{(paidMap[payLoan.id] || 0).toLocaleString()}</strong>
               </div>
+              {(() => {
+                const pp = parsePerPeriod(payLoan.notes);
+                if (!pp) return null;
+                const remaining = Math.max(0, totalDue(payLoan) - (paidMap[payLoan.id] || 0));
+                const minReq = Math.min(pp.amount, remaining);
+                return (
+                  <div className="rounded-md bg-primary/10 text-foreground px-3 py-2 text-sm">
+                    Required {pp.schedule === "daily" ? "daily" : "weekly"} payment: <strong>{minReq.toLocaleString(undefined,{maximumFractionDigits:2})}</strong> (minimum)
+                  </div>
+                );
+              })()}
               <div className="grid grid-cols-2 gap-3">
-                <div><Label>Amount</Label><Input type="number" step="0.01" value={payAmount || ""} onChange={(e) => setPayAmount(Number(e.target.value))} required /></div>
+                <div><Label>Amount</Label><Input type="number" step="0.01" min={(() => { const pp = parsePerPeriod(payLoan.notes); if (!pp) return undefined; const remaining = Math.max(0, totalDue(payLoan) - (paidMap[payLoan.id] || 0)); return Math.min(pp.amount, remaining); })()} value={payAmount || ""} onChange={(e) => setPayAmount(Number(e.target.value))} required /></div>
                 <div>
                   <Label>Method</Label>
                   <Select value={payMethod} onValueChange={setPayMethod}>
