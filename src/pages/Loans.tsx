@@ -102,7 +102,7 @@ const Loans = () => {
     setPayLoan(l);
     const pp = parsePerPeriod(l.notes);
     const remaining = Math.max(0, totalDue(l) - (paidMap[l.id] || 0));
-    const suggested = pp ? Math.min(pp.amount, remaining) : 0;
+    const suggested = pp ? Math.min(pp.amount, remaining) : remaining;
     setPayAmount(Number(suggested.toFixed(2)));
     setPayMethod("cash");
     setPayOpen(true);
@@ -110,6 +110,14 @@ const Loans = () => {
   const submitPay = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!payLoan || payAmount <= 0) return toast.error("Enter an amount");
+    const pp = parsePerPeriod(payLoan.notes);
+    const remaining = Math.max(0, totalDue(payLoan) - (paidMap[payLoan.id] || 0));
+    if (pp) {
+      const minRequired = Math.min(pp.amount, remaining);
+      if (payAmount < minRequired - 0.01) {
+        return toast.error(`Minimum payment is ${minRequired.toLocaleString()} (${pp.schedule === "daily" ? "daily" : "weekly"} amount)`);
+      }
+    }
     const { error } = await supabase.from("payments").insert({ loan_id: payLoan.id, amount: payAmount, method: payMethod, created_by: user!.id } as never);
     if (error) return toast.error(error.message);
     const newPaid = (paidMap[payLoan.id] || 0) + payAmount;
