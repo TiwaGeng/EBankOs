@@ -51,16 +51,7 @@ const Loans = () => {
       .in("status", ["active", "overdue"])
       .order("created_at", { ascending: false });
     if (error) toast.error(error.message);
-    else {
-      // Show only the latest active loan per client
-      const seen = new Set<string>();
-      const unique = ((data ?? []) as Loan[]).filter((l) => {
-        if (seen.has(l.client_id)) return false;
-        seen.add(l.client_id);
-        return true;
-      });
-      setLoans(unique);
-    }
+    else setLoans((data ?? []) as Loan[]);
     const { data: cs } = await supabase.from("clients").select("id, full_name").order("full_name");
     setClients(cs ?? []);
     const { data: pays } = await supabase.from("payments").select("loan_id, amount");
