@@ -26,6 +26,8 @@ import ClientsWithoutLoans from "./pages/reports/ClientsWithoutLoans";
 import AllLoans from "./pages/reports/AllLoans";
 import ComplicatedLoans from "./pages/reports/ComplicatedLoans";
 import RenewedLoans from "./pages/reports/RenewedLoans";
+import Settings from "./pages/Settings";
+import Messages from "./pages/clients/Messages";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -46,6 +48,8 @@ const App = () => (
               <Route path="/clients/new" element={<NewClient />} />
               <Route path="/clients/manage" element={<ManageClients />} />
               <Route path="/clients/book" element={<ClientBook />} />
+              <Route path="/clients/messages" element={<Messages />} />
+              <Route path="/settings" element={<Settings />} />
               <Route path="/loans" element={<Loans />} />
               <Route path="/loans/new" element={<GiveLoan />} />
               <Route path="/loans/renew" element={<RenewLoan />} />

@@ -5,12 +5,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import ReportToolbar, { periodRange, type Period } from "@/components/app/ReportToolbar";
 
 interface Payment { id: string; amount: number; method: string; paid_at: string; loans?: { clients?: { full_name: string } | null } | null; }
+interface Tx { id: string; type: "income" | "expense"; category: string; amount: number; description: string | null; occurred_at: string; }
 
 const DailyReport = () => {
   const [period, setPeriod] = useState<Period>("daily");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [pays, setPays] = useState<Payment[]>([]);
   const [total, setTotal] = useState(0);
+  const [txs, setTxs] = useState<Tx[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -19,6 +21,8 @@ const DailyReport = () => {
       const list = (data ?? []) as Payment[];
       setPays(list);
       setTotal(list.reduce((a, p) => a + Number(p.amount), 0));
+      const { data: tx } = await supabase.from("transactions").select("*").gte("occurred_at", from).lte("occurred_at", to);
+      setTxs((tx ?? []) as Tx[]);
     })();
   }, [date, period]);
 
@@ -31,6 +35,15 @@ const DailyReport = () => {
     Method: p.method.replace("_", " "),
   }));
 
+  // Summary metrics
+  const sumWhere = (fn: (t: Tx) => boolean) => txs.filter(fn).reduce((a, t) => a + Number(t.amount), 0);
+  const cashIn = total + sumWhere((t) => t.type === "income");
+  const cashOut = sumWhere((t) => t.type === "expense");
+  const momWithdrawal = sumWhere((t) => t.type === "expense" && /mom/i.test(t.category + " " + (t.description ?? "")));
+  const paidMom = sumWhere((t) => t.type === "income" && /mom/i.test(t.category + " " + (t.description ?? "")));
+  const closingStock = cashIn - cashOut;
+  const closingStockMom = paidMom - momWithdrawal;
+
   return (
     <div className="space-y-6">
       <header>
@@ -40,6 +53,21 @@ const DailyReport = () => {
         </div>
       </header>
       <ReportToolbar period={period} onPeriodChange={setPeriod} date={date} onDateChange={setDate} rows={exportRows} filename={`${period}-report-${rangeLabel}`} title={`${period[0].toUpperCase()}${period.slice(1)} Report — ${rangeLabel}`} />
+
+      <Card className="shadow-soft border-primary/20">
+        <CardHeader><CardTitle>Summary — {rangeLabel}</CardTitle></CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+            <div className="rounded-lg border bg-muted/40 p-3"><div className="text-muted-foreground text-xs">Cash in is</div><div className="font-semibold text-base">{cashIn.toLocaleString()}</div></div>
+            <div className="rounded-lg border bg-muted/40 p-3"><div className="text-muted-foreground text-xs">Cash out is</div><div className="font-semibold text-base">{cashOut.toLocaleString()}</div></div>
+            <div className="rounded-lg border bg-muted/40 p-3"><div className="text-muted-foreground text-xs">Closing stock is</div><div className="font-semibold text-base">{closingStock.toLocaleString()}</div></div>
+            <div className="rounded-lg border bg-muted/40 p-3"><div className="text-muted-foreground text-xs">Mom withdrawal</div><div className="font-semibold text-base">{momWithdrawal.toLocaleString()}</div></div>
+            <div className="rounded-lg border bg-muted/40 p-3"><div className="text-muted-foreground text-xs">Paid mom</div><div className="font-semibold text-base">{paidMom.toLocaleString()}</div></div>
+            <div className="rounded-lg border bg-muted/40 p-3"><div className="text-muted-foreground text-xs">Closing stock mom</div><div className="font-semibold text-base">{closingStockMom.toLocaleString()}</div></div>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card className="shadow-soft">
         <CardHeader><CardTitle>Payments — {rangeLabel}</CardTitle></CardHeader>
         <CardContent>

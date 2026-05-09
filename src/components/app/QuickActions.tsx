@@ -63,7 +63,6 @@ const QuickActions = () => {
   return (
     <div className="sticky top-0 z-30 bg-card/95 backdrop-blur border-b">
       <div className="flex flex-wrap items-center gap-2 px-4 lg:px-6 py-2.5">
-        <span className="text-xs font-semibold text-muted-foreground mr-2 uppercase tracking-wide">Quick Actions</span>
         {canPost && <>
           <Button size="sm" variant="outline" className={btn} onClick={() => setKind("payable")}><ArrowUpCircle className="h-4 w-4" /> Add Payable</Button>
           <Button size="sm" variant="outline" className={btn} onClick={() => setKind("receivable")}><ArrowDownCircle className="h-4 w-4" /> Add Receivable</Button>

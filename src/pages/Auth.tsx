@@ -13,6 +13,7 @@ import { toast } from "sonner";
 const emailSchema = z.string().trim().email("Invalid email").max(255);
 const passSchema = z.string().min(6, "Min 6 characters").max(72);
 const nameSchema = z.string().trim().min(2, "Name too short").max(100);
+const phoneSchema = z.string().trim().min(7, "Phone too short").max(20).regex(/^[+0-9 \-()]+$/, "Invalid phone").optional().or(z.literal(""));
 
 const Auth = () => {
   const { user, loading } = useAuth();
@@ -44,19 +45,22 @@ const Auth = () => {
     const email = String(fd.get("email"));
     const password = String(fd.get("password"));
     const full_name = String(fd.get("full_name"));
+    const phone = String(fd.get("phone") || "");
     const ev = emailSchema.safeParse(email);
     const pv = passSchema.safeParse(password);
     const nv = nameSchema.safeParse(full_name);
+    const phv = phoneSchema.safeParse(phone);
     if (!ev.success) return toast.error(ev.error.errors[0].message);
     if (!pv.success) return toast.error(pv.error.errors[0].message);
     if (!nv.success) return toast.error(nv.error.errors[0].message);
+    if (!phv.success) return toast.error(phv.error.errors[0].message);
     setBusy(true);
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         emailRedirectTo: `${window.location.origin}/dashboard`,
-        data: { full_name },
+        data: { full_name, phone: phone || null },
       },
     });
     setBusy(false);
@@ -106,6 +110,10 @@ const Auth = () => {
                 <div>
                   <Label htmlFor="su-name">Full name</Label>
                   <Input id="su-name" name="full_name" required />
+                </div>
+                <div>
+                  <Label htmlFor="su-phone">Phone number</Label>
+                  <Input id="su-phone" name="phone" type="tel" placeholder="+250 7XX XXX XXX" />
                 </div>
                 <div>
                   <Label htmlFor="su-email">Email</Label>
