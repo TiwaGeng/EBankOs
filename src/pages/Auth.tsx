@@ -45,19 +45,22 @@ const Auth = () => {
     const email = String(fd.get("email"));
     const password = String(fd.get("password"));
     const full_name = String(fd.get("full_name"));
+    const phone = String(fd.get("phone") || "");
     const ev = emailSchema.safeParse(email);
     const pv = passSchema.safeParse(password);
     const nv = nameSchema.safeParse(full_name);
+    const phv = phoneSchema.safeParse(phone);
     if (!ev.success) return toast.error(ev.error.errors[0].message);
     if (!pv.success) return toast.error(pv.error.errors[0].message);
     if (!nv.success) return toast.error(nv.error.errors[0].message);
+    if (!phv.success) return toast.error(phv.error.errors[0].message);
     setBusy(true);
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         emailRedirectTo: `${window.location.origin}/dashboard`,
-        data: { full_name },
+        data: { full_name, phone: phone || null },
       },
     });
     setBusy(false);
