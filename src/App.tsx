@@ -26,6 +26,8 @@ import ClientsWithoutLoans from "./pages/reports/ClientsWithoutLoans";
 import AllLoans from "./pages/reports/AllLoans";
 import ComplicatedLoans from "./pages/reports/ComplicatedLoans";
 import RenewedLoans from "./pages/reports/RenewedLoans";
+import Settings from "./pages/Settings";
+import Messages from "./pages/clients/Messages";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
