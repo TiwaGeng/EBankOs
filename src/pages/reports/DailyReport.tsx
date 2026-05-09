@@ -53,6 +53,21 @@ const DailyReport = () => {
         </div>
       </header>
       <ReportToolbar period={period} onPeriodChange={setPeriod} date={date} onDateChange={setDate} rows={exportRows} filename={`${period}-report-${rangeLabel}`} title={`${period[0].toUpperCase()}${period.slice(1)} Report — ${rangeLabel}`} />
+
+      <Card className="shadow-soft border-primary/20">
+        <CardHeader><CardTitle>Summary — {rangeLabel}</CardTitle></CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+            <div className="rounded-lg border bg-muted/40 p-3"><div className="text-muted-foreground text-xs">Cash in is</div><div className="font-semibold text-base">{cashIn.toLocaleString()}</div></div>
+            <div className="rounded-lg border bg-muted/40 p-3"><div className="text-muted-foreground text-xs">Cash out is</div><div className="font-semibold text-base">{cashOut.toLocaleString()}</div></div>
+            <div className="rounded-lg border bg-muted/40 p-3"><div className="text-muted-foreground text-xs">Closing stock is</div><div className="font-semibold text-base">{closingStock.toLocaleString()}</div></div>
+            <div className="rounded-lg border bg-muted/40 p-3"><div className="text-muted-foreground text-xs">Mom withdrawal</div><div className="font-semibold text-base">{momWithdrawal.toLocaleString()}</div></div>
+            <div className="rounded-lg border bg-muted/40 p-3"><div className="text-muted-foreground text-xs">Paid mom</div><div className="font-semibold text-base">{paidMom.toLocaleString()}</div></div>
+            <div className="rounded-lg border bg-muted/40 p-3"><div className="text-muted-foreground text-xs">Closing stock mom</div><div className="font-semibold text-base">{closingStockMom.toLocaleString()}</div></div>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card className="shadow-soft">
         <CardHeader><CardTitle>Payments — {rangeLabel}</CardTitle></CardHeader>
         <CardContent>
