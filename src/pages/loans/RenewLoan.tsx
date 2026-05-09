@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Check, ChevronsUpDown } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 interface Loan { id: string; principal: number; term_months: number; interest_rate: number; fine: number; client_id: string; notes: string | null; created_at: string; clients?: { full_name: string } | null; }
 
@@ -22,6 +26,7 @@ const RenewLoan = () => {
   const { user, hasRole } = useAuth();
   const [loans, setLoans] = useState<Loan[]>([]);
   const [loanId, setLoanId] = useState("");
+  const [open, setOpen] = useState(false);
   const [months, setMonths] = useState<number>(1);
   const [rate, setRate] = useState<string>("15");
   const [schedule, setSchedule] = useState<"daily" | "weekly">("daily");
@@ -45,19 +50,23 @@ const RenewLoan = () => {
   };
   useEffect(() => { load(); }, []);
 
-  if (!hasRole(["admin", "loan_officer"])) return <p className="text-muted-foreground">You don't have permission to renew loans.</p>;
-
-  const remainingFor = (l: Loan) => {
+  const remainingFor = useMemo(() => (l: Loan) => {
     const total = Number(l.principal) * (1 + Number(l.interest_rate || 0) / 100) + Number(l.fine || 0);
     return Math.max(0, total - (paidMap[l.id] || 0));
-  };
+  }, [paidMap]);
+
+  if (!hasRole(["admin", "loan_officer"])) return <p className="text-muted-foreground">You don't have permission to renew loans.</p>;
+
   const selected = loans.find((l) => l.id === loanId);
   const selectedPaid = selected ? (paidMap[selected.id] || 0) : 0;
   const selectedRemaining = selected ? remainingFor(selected) : 0;
   const selectedPP = selected ? parsePerPeriod(selected.notes) : null;
 
-  const newPrincipal = selected ? Number(selected.principal) + selectedRemaining : 0;
-  const newTotalPayable = newPrincipal * (1 + Number(rate) / 100);
+  // NEW calculation: tax/interest is applied on the original principal first,
+  // THEN the carried unpaid balance is added on top.
+  const newPrincipal = selected ? Number(selected.principal) : 0;
+  const interestOnly = newPrincipal * (Number(rate) / 100);
+  const newTotalPayable = newPrincipal + interestOnly + selectedRemaining;
   const days = months * 30;
   const weeks = months * 4;
   const newPerDay = days > 0 ? newTotalPayable / days : 0;
@@ -71,15 +80,19 @@ const RenewLoan = () => {
       `schedule:${schedule}`,
       schedule === "daily" ? `per_day:${newPerDay.toFixed(2)}` : `per_week:${newPerWeek.toFixed(2)}`,
       `total_payable:${newTotalPayable.toFixed(2)}`,
-      `Renewed from loan ${selected.id} — carried remaining ${selectedRemaining.toFixed(2)}`,
+      `Renewed from loan ${selected.id} — carried unpaid ${selectedRemaining.toFixed(2)} added after ${rate}% on ${newPrincipal.toFixed(2)}`,
     ];
     const { error: e1 } = await supabase.from("loans").update({ status: "renewed" as const }).eq("id", selected.id);
     if (e1) return toast.error(e1.message);
+    // Store the new loan with original principal so future renewals re-use it.
+    // The notes field carries total_payable which Payments uses for remaining math via initial fine workaround:
+    // we add the carried remaining as `fine` so that remaining = principal*(1+rate)+fine = newTotalPayable.
     const { error: e2 } = await supabase.from("loans").insert({
       client_id: selected.client_id,
       principal: newPrincipal,
       interest_rate: Number(rate),
       term_months: months,
+      fine: selectedRemaining,
       status: "active" as const,
       given_at: new Date().toISOString().slice(0, 10),
       due_at: due.toISOString().slice(0, 10),
@@ -95,18 +108,45 @@ const RenewLoan = () => {
     <div className="space-y-6 max-w-2xl">
       <header>
         <h1 className="font-display text-3xl font-bold">Renew Loan</h1>
-        <p className="text-muted-foreground">Mark current loan as renewed and start a new term</p>
+        <p className="text-muted-foreground">Tax is calculated on the original principal first, then the unpaid balance is added.</p>
       </header>
       <Card className="shadow-soft">
         <CardHeader><CardTitle>Renewal</CardTitle></CardHeader>
         <CardContent>
           <form onSubmit={submit} className="space-y-4">
             <div>
-              <Label>Active / Overdue Loan</Label>
-              <Select value={loanId} onValueChange={setLoanId}>
-                <SelectTrigger><SelectValue placeholder="Pick a loan" /></SelectTrigger>
-                <SelectContent>{loans.map((l) => <SelectItem key={l.id} value={l.id}>{l.clients?.full_name} — principal {Number(l.principal).toLocaleString()}, remaining {remainingFor(l).toLocaleString()}</SelectItem>)}</SelectContent>
-              </Select>
+              <Label>Active / Overdue Loan (search by client name)</Label>
+              <Popover open={open} onOpenChange={setOpen}>
+                <PopoverTrigger asChild>
+                  <Button type="button" variant="outline" role="combobox" className="w-full justify-between font-normal">
+                    {selected
+                      ? `${selected.clients?.full_name} — principal ${Number(selected.principal).toLocaleString()}, remaining ${remainingFor(selected).toLocaleString()}`
+                      : "Type a client name to find a loan…"}
+                    <ChevronsUpDown className="h-4 w-4 opacity-50 shrink-0" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Search client…" />
+                    <CommandList>
+                      <CommandEmpty>No loan found.</CommandEmpty>
+                      <CommandGroup>
+                        {loans.map((l) => (
+                          <CommandItem
+                            key={l.id}
+                            value={`${l.clients?.full_name ?? ""} ${l.id}`}
+                            onSelect={() => { setLoanId(l.id); setOpen(false); }}
+                          >
+                            <Check className={cn("mr-2 h-4 w-4", loanId === l.id ? "opacity-100" : "opacity-0")} />
+                            <span className="flex-1 truncate">{l.clients?.full_name}</span>
+                            <span className="ml-2 text-xs text-muted-foreground">P {Number(l.principal).toLocaleString()} · R {remainingFor(l).toLocaleString()}</span>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
 
             {selected && (
@@ -115,8 +155,8 @@ const RenewLoan = () => {
                 <div className="flex justify-between"><span className="text-muted-foreground">Principal</span><strong>{Number(selected.principal).toLocaleString()}</strong></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Interest rate</span><strong>{selected.interest_rate}%</strong></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Paid amount</span><strong>{selectedPaid.toLocaleString()}</strong></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Remaining</span><strong>{selectedRemaining.toLocaleString()}</strong></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Current {selectedPP?.schedule === "weekly" ? "weekly" : "daily"} payment</span><strong>{selectedPP ? selectedPP.amount.toLocaleString(undefined,{maximumFractionDigits:2}) : "—"}</strong></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Remaining unpaid</span><strong>{selectedRemaining.toLocaleString()}</strong></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Current {selectedPP?.schedule === "weekly" ? "weekly" : "daily"} payment</span><strong>{selectedPP ? selectedPP.amount.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—"}</strong></div>
               </div>
             )}
 
@@ -149,13 +189,14 @@ const RenewLoan = () => {
             {selected && (
               <div className="rounded-lg border bg-primary/5 p-3 text-sm space-y-1">
                 <div className="font-medium mb-1">Renewed loan preview</div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Carried remaining</span><strong>{selectedRemaining.toLocaleString()}</strong></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">New combined principal</span><strong className="text-primary">{newPrincipal.toLocaleString(undefined,{maximumFractionDigits:2})}</strong></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">New total payable</span><strong>{newTotalPayable.toLocaleString(undefined,{maximumFractionDigits:2})}</strong></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">New principal (same as before)</span><strong>{newPrincipal.toLocaleString()}</strong></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">+ Interest ({rate}% on principal)</span><strong>{interestOnly.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">+ Carried unpaid balance</span><strong>{selectedRemaining.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></div>
+                <div className="flex justify-between border-t pt-1 mt-1"><span className="text-muted-foreground">New total payable</span><strong className="text-primary">{newTotalPayable.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></div>
                 {schedule === "daily" ? (
-                  <div className="flex justify-between"><span className="text-muted-foreground">Amount to pay every day ({days} days)</span><strong>{newPerDay.toLocaleString(undefined,{maximumFractionDigits:2})}</strong></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Amount to pay every day ({days} days)</span><strong>{newPerDay.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></div>
                 ) : (
-                  <div className="flex justify-between"><span className="text-muted-foreground">Amount to pay every week ({weeks} weeks)</span><strong>{newPerWeek.toLocaleString(undefined,{maximumFractionDigits:2})}</strong></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Amount to pay every week ({weeks} weeks)</span><strong>{newPerWeek.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></div>
                 )}
               </div>
             )}
@@ -179,7 +220,7 @@ const RenewLoan = () => {
                   <div className="mt-1 flex justify-between"><span className="text-muted-foreground">Principal</span><strong>{Number(l.principal).toLocaleString()}</strong></div>
                   <div className="flex justify-between"><span className="text-muted-foreground">Paid</span><strong>{paid.toLocaleString()}</strong></div>
                   <div className="flex justify-between"><span className="text-muted-foreground">Remaining</span><strong>{remaining.toLocaleString()}</strong></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">{pp?.schedule === "weekly" ? "Weekly" : "Daily"} payment</span><strong>{pp ? `${pp.amount.toLocaleString(undefined,{maximumFractionDigits:2})} / ${pp.schedule === "daily" ? "day" : "wk"}` : "—"}</strong></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">{pp?.schedule === "weekly" ? "Weekly" : "Daily"} payment</span><strong>{pp ? `${pp.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })} / ${pp.schedule === "daily" ? "day" : "wk"}` : "—"}</strong></div>
                 </div>
               );
             })}
