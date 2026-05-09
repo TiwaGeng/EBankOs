@@ -5,12 +5,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import ReportToolbar, { periodRange, type Period } from "@/components/app/ReportToolbar";
 
 interface Payment { id: string; amount: number; method: string; paid_at: string; loans?: { clients?: { full_name: string } | null } | null; }
+interface Tx { id: string; type: "income" | "expense"; category: string; amount: number; description: string | null; occurred_at: string; }
 
 const DailyReport = () => {
   const [period, setPeriod] = useState<Period>("daily");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [pays, setPays] = useState<Payment[]>([]);
   const [total, setTotal] = useState(0);
+  const [txs, setTxs] = useState<Tx[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -19,6 +21,8 @@ const DailyReport = () => {
       const list = (data ?? []) as Payment[];
       setPays(list);
       setTotal(list.reduce((a, p) => a + Number(p.amount), 0));
+      const { data: tx } = await supabase.from("transactions").select("*").gte("occurred_at", from).lte("occurred_at", to);
+      setTxs((tx ?? []) as Tx[]);
     })();
   }, [date, period]);
 
@@ -30,6 +34,15 @@ const DailyReport = () => {
     Amount: Number(p.amount),
     Method: p.method.replace("_", " "),
   }));
+
+  // Summary metrics
+  const sumWhere = (fn: (t: Tx) => boolean) => txs.filter(fn).reduce((a, t) => a + Number(t.amount), 0);
+  const cashIn = total + sumWhere((t) => t.type === "income");
+  const cashOut = sumWhere((t) => t.type === "expense");
+  const momWithdrawal = sumWhere((t) => t.type === "expense" && /mom/i.test(t.category + " " + (t.description ?? "")));
+  const paidMom = sumWhere((t) => t.type === "income" && /mom/i.test(t.category + " " + (t.description ?? "")));
+  const closingStock = cashIn - cashOut;
+  const closingStockMom = paidMom - momWithdrawal;
 
   return (
     <div className="space-y-6">
