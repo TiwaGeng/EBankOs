@@ -13,6 +13,7 @@ import { toast } from "sonner";
 const emailSchema = z.string().trim().email("Invalid email").max(255);
 const passSchema = z.string().min(6, "Min 6 characters").max(72);
 const nameSchema = z.string().trim().min(2, "Name too short").max(100);
+const phoneSchema = z.string().trim().min(7, "Phone too short").max(20).regex(/^[+0-9 \-()]+$/, "Invalid phone").optional().or(z.literal(""));
 
 const Auth = () => {
   const { user, loading } = useAuth();
