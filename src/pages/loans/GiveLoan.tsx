@@ -185,7 +185,7 @@ const GiveLoan = () => {
                   <p className="font-medium truncate">{c.full_name}{c.last_name ? ` ${c.last_name}` : ""}</p>
                   <p className="text-xs text-muted-foreground truncate">{c.phone ?? "—"}</p>
                 </div>
-                {clientId === c.id ? <Check className="h-4 w-4 text-primary shrink-0" /> : <span className="text-xs text-primary shrink-0">Pick</span>}
+                {clientId === c.id ? <Check className="h-4 w-4 text-primary shrink-0" /> : <span className="text-xs font-medium text-primary shrink-0">Give loan</span>}
               </button>
             ))}
           </div>
