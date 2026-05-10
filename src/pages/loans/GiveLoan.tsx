@@ -162,6 +162,35 @@ const GiveLoan = () => {
           </form>
         </CardContent>
       </Card>
+      </div>
+
+      <Card className="shadow-soft">
+        <CardHeader><CardTitle>Eligible clients ({eligible.length})</CardTitle></CardHeader>
+        <CardContent>
+          <p className="text-xs text-muted-foreground mb-2">Scroll and pick — no active loan</p>
+          <div className="max-h-[480px] overflow-auto rounded-md border divide-y">
+            {eligible.length === 0 ? (
+              <p className="p-4 text-sm text-muted-foreground text-center">No eligible clients</p>
+            ) : eligible.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setClientId(c.id)}
+                className={cn(
+                  "w-full text-left p-3 hover:bg-muted/60 transition-colors flex items-center justify-between gap-2",
+                  clientId === c.id && "bg-primary/10"
+                )}
+              >
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{c.full_name}{c.last_name ? ` ${c.last_name}` : ""}</p>
+                  <p className="text-xs text-muted-foreground truncate">{c.phone ?? "—"}</p>
+                </div>
+                {clientId === c.id ? <Check className="h-4 w-4 text-primary shrink-0" /> : <span className="text-xs text-primary shrink-0">Pick</span>}
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };
