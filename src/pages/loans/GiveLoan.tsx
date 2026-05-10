@@ -78,8 +78,11 @@ const GiveLoan = () => {
     nav("/loans");
   };
 
+  const eligible = clients.filter((c) => !activeClientIds.has(c.id));
+
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6 grid lg:grid-cols-[1fr_360px] gap-6 items-start">
+      <div className="space-y-6">
       <header>
         <h1 className="font-display text-3xl font-bold">Give Loan</h1>
         <p className="text-muted-foreground">Issue a new loan to a client</p>
