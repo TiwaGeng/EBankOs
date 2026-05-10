@@ -181,33 +181,6 @@ const Dashboard = () => {
         </CardContent>
       </Card>
 
-
-      {/* Today summary + send report */}
-      <Card className="shadow-soft">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Today — {today()}</CardTitle>
-          <Button onClick={() => setReportOpen(true)} className="animate-pulse">
-            <Send className="h-4 w-4 mr-2" /> Send report
-          </Button>
-        </CardHeader>
-        <CardContent>
-          <div className="grid sm:grid-cols-3 gap-4">
-            <div className="rounded-lg border bg-muted/40 p-4">
-              <p className="text-sm text-muted-foreground">Cash in</p>
-              <p className="font-display text-2xl font-bold">{fmt(todayIn)}</p>
-            </div>
-            <div className="rounded-lg border bg-muted/40 p-4">
-              <p className="text-sm text-muted-foreground">Cash out</p>
-              <p className="font-display text-2xl font-bold">{fmt(todayOut)}</p>
-            </div>
-            <div className="rounded-lg border bg-primary/10 p-4">
-              <p className="text-sm text-muted-foreground">Cash at hand is</p>
-              <p className="font-display text-2xl font-bold">{fmt(cashAtHand)}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       <Dialog open={reportOpen} onOpenChange={setReportOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>Send daily report</DialogTitle></DialogHeader>
