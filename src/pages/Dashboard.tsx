@@ -1,21 +1,44 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Users, HandCoins, AlertTriangle, Wallet } from "lucide-react";
+import { Users, HandCoins, AlertTriangle, Wallet, Send, Plus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { toast } from "sonner";
 
-const fmt = (n: number) => new Intl.NumberFormat().format(n);
+const fmt = (n: number) => new Intl.NumberFormat().format(Math.round(n));
+const today = () => new Date().toISOString().slice(0, 10);
+
+interface Client { id: string; full_name: string; last_name: string | null; phone: string | null; }
 
 const Dashboard = () => {
+  const nav = useNavigate();
   const [stats, setStats] = useState({ clients: 0, activeLoans: 0, overdue: 0, collected: 0 });
-  const [chart, setChart] = useState<{ day: string; amount: number }[]>([]);
+  const [todayIn, setTodayIn] = useState(0);
+  const [todayOut, setTodayOut] = useState(0);
+  const [noLoanClients, setNoLoanClients] = useState<Client[]>([]);
+
+  const [reportOpen, setReportOpen] = useState(false);
+  const [startBal, setStartBal] = useState("");
+  const [endBal, setEndBal] = useState("");
+  const [bankBal, setBankBal] = useState("");
+  const [momBal, setMomBal] = useState("");
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     (async () => {
-      const [{ count: clients }, loansRes, payRes] = await Promise.all([
+      const t = today();
+      const [{ count: clients }, loansRes, payRes, txRes, allClientsRes, activeLoansRes] = await Promise.all([
         supabase.from("clients").select("*", { count: "exact", head: true }),
         supabase.from("loans").select("status, principal"),
         supabase.from("payments").select("amount, paid_at"),
+        supabase.from("transactions").select("type, amount, occurred_at").eq("occurred_at", t),
+        supabase.from("clients").select("id, full_name, last_name, phone").order("full_name"),
+        supabase.from("loans").select("client_id").in("status", ["active", "overdue", "renewed"]),
       ]);
       const loans = loansRes.data ?? [];
       const pays = payRes.data ?? [];
@@ -25,23 +48,54 @@ const Dashboard = () => {
         overdue: loans.filter((l) => l.status === "overdue").length,
         collected: pays.reduce((a, p) => a + Number(p.amount), 0),
       });
-      const map = new Map<string, number>();
-      const days = Array.from({ length: 7 }, (_, i) => {
-        const d = new Date(); d.setDate(d.getDate() - (6 - i));
-        return d.toISOString().slice(0, 10);
-      });
-      days.forEach((d) => map.set(d, 0));
-      pays.forEach((p) => { if (map.has(p.paid_at)) map.set(p.paid_at, (map.get(p.paid_at) ?? 0) + Number(p.amount)); });
-      setChart(Array.from(map.entries()).map(([day, amount]) => ({ day: day.slice(5), amount })));
+      const todayPay = pays.filter((p) => p.paid_at === t).reduce((a, p) => a + Number(p.amount), 0);
+      const tx = txRes.data ?? [];
+      const txIn = tx.filter((x) => x.type === "income").reduce((a, x) => a + Number(x.amount), 0);
+      const txOut = tx.filter((x) => x.type === "expense").reduce((a, x) => a + Number(x.amount), 0);
+      setTodayIn(todayPay + txIn);
+      setTodayOut(txOut);
+
+      const withLoans = new Set((activeLoansRes.data ?? []).map((l: { client_id: string }) => l.client_id));
+      setNoLoanClients(((allClientsRes.data ?? []) as Client[]).filter((c) => !withLoans.has(c.id)));
     })();
   }, []);
+
+  const cashAtHand = useMemo(() => todayIn - todayOut, [todayIn, todayOut]);
 
   const cards = [
     { label: "Total Clients", value: fmt(stats.clients), icon: Users },
     { label: "Active Loans", value: fmt(stats.activeLoans), icon: HandCoins },
     { label: "Overdue", value: fmt(stats.overdue), icon: AlertTriangle },
-    { label: "Collected", value: fmt(stats.collected), icon: Wallet },
+    { label: "Collected (all)", value: fmt(stats.collected), icon: Wallet },
   ];
+
+  const buildReport = () => {
+    return [
+      `Daily Report — ${today()}`,
+      ``,
+      `Cash in (today): ${fmt(todayIn)}`,
+      `Cash out (today): ${fmt(todayOut)}`,
+      `Cash at hand: ${fmt(cashAtHand)}`,
+      ``,
+      `Starting balance: ${startBal || 0}`,
+      `Ending balance: ${endBal || 0}`,
+      `Cash at bank: ${bankBal || 0}`,
+      `Cash at MoMo: ${momBal || 0}`,
+    ].join("\n");
+  };
+
+  const sendReport = async () => {
+    setSending(true);
+    const text = buildReport();
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch { /* ignore */ }
+    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(url, "_blank");
+    toast.success("Report ready — copied & opened share window");
+    setSending(false);
+    setReportOpen(false);
+  };
 
   return (
     <div className="space-y-8">
@@ -49,6 +103,7 @@ const Dashboard = () => {
         <h1 className="font-display text-3xl font-bold">Dashboard</h1>
         <p className="text-muted-foreground">Snapshot of your business today</p>
       </header>
+
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {cards.map(({ label, value, icon: Icon }) => (
           <Card key={label} className="shadow-soft">
@@ -60,20 +115,92 @@ const Dashboard = () => {
           </Card>
         ))}
       </div>
+
+      {/* Clients without loans */}
       <Card className="shadow-soft">
-        <CardHeader><CardTitle>Payments — last 7 days</CardTitle></CardHeader>
-        <CardContent className="h-72">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chart}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-              <XAxis dataKey="day" className="text-xs" />
-              <YAxis className="text-xs" />
-              <Tooltip />
-              <Bar dataKey="amount" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Clients without active loans ({noLoanClients.length})</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="max-h-80 overflow-auto rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Client</TableHead>
+                  <TableHead>Phone</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {noLoanClients.length === 0 ? (
+                  <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground py-6">All clients currently have a loan</TableCell></TableRow>
+                ) : noLoanClients.map((c) => (
+                  <TableRow key={c.id}>
+                    <TableCell className="font-medium">{c.full_name}{c.last_name ? ` ${c.last_name}` : ""}</TableCell>
+                    <TableCell>{c.phone ?? "—"}</TableCell>
+                    <TableCell className="text-right">
+                      <Button size="sm" onClick={() => nav(`/loans/new?client=${c.id}`)}>
+                        <Plus className="h-4 w-4 mr-1" /> Give loan
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
+
+      {/* Today summary + send report */}
+      <Card className="shadow-soft">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Today — {today()}</CardTitle>
+          <Button onClick={() => setReportOpen(true)} className="animate-pulse">
+            <Send className="h-4 w-4 mr-2" /> Send report
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <div className="grid sm:grid-cols-3 gap-4">
+            <div className="rounded-lg border bg-muted/40 p-4">
+              <p className="text-sm text-muted-foreground">Cash in</p>
+              <p className="font-display text-2xl font-bold">{fmt(todayIn)}</p>
+            </div>
+            <div className="rounded-lg border bg-muted/40 p-4">
+              <p className="text-sm text-muted-foreground">Cash out</p>
+              <p className="font-display text-2xl font-bold">{fmt(todayOut)}</p>
+            </div>
+            <div className="rounded-lg border bg-primary/10 p-4">
+              <p className="text-sm text-muted-foreground">Cash at hand is</p>
+              <p className="font-display text-2xl font-bold">{fmt(cashAtHand)}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Dialog open={reportOpen} onOpenChange={setReportOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Send daily report</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="rounded-md bg-muted/40 p-3 text-sm space-y-1">
+              <div className="flex justify-between"><span>Cash in</span><strong>{fmt(todayIn)}</strong></div>
+              <div className="flex justify-between"><span>Cash out</span><strong>{fmt(todayOut)}</strong></div>
+              <div className="flex justify-between"><span>Cash at hand</span><strong>{fmt(cashAtHand)}</strong></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Starting balance</Label><Input type="number" value={startBal} onChange={(e) => setStartBal(e.target.value)} placeholder="0" /></div>
+              <div><Label>Ending balance</Label><Input type="number" value={endBal} onChange={(e) => setEndBal(e.target.value)} placeholder="0" /></div>
+              <div><Label>Cash at bank</Label><Input type="number" value={bankBal} onChange={(e) => setBankBal(e.target.value)} placeholder="0" /></div>
+              <div><Label>Cash at MoMo</Label><Input type="number" value={momBal} onChange={(e) => setMomBal(e.target.value)} placeholder="0" /></div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReportOpen(false)}>Cancel</Button>
+            <Button onClick={sendReport} disabled={sending}>
+              <Send className="h-4 w-4 mr-2" /> {sending ? "Sending…" : "Send"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
