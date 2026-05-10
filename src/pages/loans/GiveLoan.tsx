@@ -26,8 +26,9 @@ const schema = z.object({
 const GiveLoan = () => {
   const { user, hasRole } = useAuth();
   const nav = useNavigate();
+  const [params] = useSearchParams();
   const [clients, setClients] = useState<Client[]>([]);
-  const [clientId, setClientId] = useState("");
+  const [clientId, setClientId] = useState(params.get("client") ?? "");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [principal, setPrincipal] = useState<number>(0);
   const [rate, setRate] = useState<string>("15");
