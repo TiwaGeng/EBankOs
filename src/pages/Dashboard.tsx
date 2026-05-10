@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Users, HandCoins, AlertTriangle, Wallet, Send, Plus } from "lucide-react";
+import { Users, HandCoins, AlertTriangle, Wallet, Send, Plus, BookOpen } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,11 +32,11 @@ const Dashboard = () => {
   useEffect(() => {
     (async () => {
       const t = today();
-      const [{ count: clients }, loansRes, payRes, txRes, allClientsRes, activeLoansRes] = await Promise.all([
+      const [{ count: clients }, loansRes, payRes, todayLoansRes, allClientsRes, activeLoansRes] = await Promise.all([
         supabase.from("clients").select("*", { count: "exact", head: true }),
         supabase.from("loans").select("status, principal"),
         supabase.from("payments").select("amount, paid_at"),
-        supabase.from("transactions").select("type, amount, occurred_at").eq("occurred_at", t),
+        supabase.from("loans").select("principal, given_at").eq("given_at", t),
         supabase.from("clients").select("id, full_name, last_name, phone").order("full_name"),
         supabase.from("loans").select("client_id").in("status", ["active", "overdue", "renewed"]),
       ]);
@@ -49,11 +49,9 @@ const Dashboard = () => {
         collected: pays.reduce((a, p) => a + Number(p.amount), 0),
       });
       const todayPay = pays.filter((p) => p.paid_at === t).reduce((a, p) => a + Number(p.amount), 0);
-      const tx = txRes.data ?? [];
-      const txIn = tx.filter((x) => x.type === "income").reduce((a, x) => a + Number(x.amount), 0);
-      const txOut = tx.filter((x) => x.type === "expense").reduce((a, x) => a + Number(x.amount), 0);
-      setTodayIn(todayPay + txIn);
-      setTodayOut(txOut);
+      const todayLoansOut = (todayLoansRes.data ?? []).reduce((a, l: { principal: number }) => a + Number(l.principal), 0);
+      setTodayIn(todayPay);
+      setTodayOut(todayLoansOut);
 
       const withLoans = new Set((activeLoansRes.data ?? []).map((l: { client_id: string }) => l.client_id));
       setNoLoanClients(((allClientsRes.data ?? []) as Client[]).filter((c) => !withLoans.has(c.id)));
