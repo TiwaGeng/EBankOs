@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Users, HandCoins, AlertTriangle, Wallet, Send, Plus } from "lucide-react";
+import { Users, HandCoins, AlertTriangle, Wallet, Send, Plus, BookOpen } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,11 +32,11 @@ const Dashboard = () => {
   useEffect(() => {
     (async () => {
       const t = today();
-      const [{ count: clients }, loansRes, payRes, txRes, allClientsRes, activeLoansRes] = await Promise.all([
+      const [{ count: clients }, loansRes, payRes, todayLoansRes, allClientsRes, activeLoansRes] = await Promise.all([
         supabase.from("clients").select("*", { count: "exact", head: true }),
         supabase.from("loans").select("status, principal"),
         supabase.from("payments").select("amount, paid_at"),
-        supabase.from("transactions").select("type, amount, occurred_at").eq("occurred_at", t),
+        supabase.from("loans").select("principal, given_at").eq("given_at", t),
         supabase.from("clients").select("id, full_name, last_name, phone").order("full_name"),
         supabase.from("loans").select("client_id").in("status", ["active", "overdue", "renewed"]),
       ]);
@@ -49,11 +49,9 @@ const Dashboard = () => {
         collected: pays.reduce((a, p) => a + Number(p.amount), 0),
       });
       const todayPay = pays.filter((p) => p.paid_at === t).reduce((a, p) => a + Number(p.amount), 0);
-      const tx = txRes.data ?? [];
-      const txIn = tx.filter((x) => x.type === "income").reduce((a, x) => a + Number(x.amount), 0);
-      const txOut = tx.filter((x) => x.type === "expense").reduce((a, x) => a + Number(x.amount), 0);
-      setTodayIn(todayPay + txIn);
-      setTodayOut(txOut);
+      const todayLoansOut = (todayLoansRes.data ?? []).reduce((a, l: { principal: number }) => a + Number(l.principal), 0);
+      setTodayIn(todayPay);
+      setTodayOut(todayLoansOut);
 
       const withLoans = new Set((activeLoansRes.data ?? []).map((l: { client_id: string }) => l.client_id));
       setNoLoanClients(((allClientsRes.data ?? []) as Client[]).filter((c) => !withLoans.has(c.id)));
@@ -116,40 +114,11 @@ const Dashboard = () => {
         ))}
       </div>
 
-      {/* Clients without loans */}
-      <Card className="shadow-soft">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Clients without active loans ({noLoanClients.length})</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="max-h-80 overflow-auto rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Client</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {noLoanClients.length === 0 ? (
-                  <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground py-6">All clients currently have a loan</TableCell></TableRow>
-                ) : noLoanClients.map((c) => (
-                  <TableRow key={c.id}>
-                    <TableCell className="font-medium">{c.full_name}{c.last_name ? ` ${c.last_name}` : ""}</TableCell>
-                    <TableCell>{c.phone ?? "—"}</TableCell>
-                    <TableCell className="text-right">
-                      <Button size="sm" onClick={() => nav(`/loans/new?client=${c.id}`)}>
-                        <Plus className="h-4 w-4 mr-1" /> Give loan
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" onClick={() => nav("/clients/book")}>
+          <BookOpen className="h-4 w-4 mr-2" /> Client book
+        </Button>
+      </div>
 
       {/* Today summary + send report */}
       <Card className="shadow-soft">
@@ -162,17 +131,52 @@ const Dashboard = () => {
         <CardContent>
           <div className="grid sm:grid-cols-3 gap-4">
             <div className="rounded-lg border bg-muted/40 p-4">
-              <p className="text-sm text-muted-foreground">Cash in</p>
+              <p className="text-sm text-muted-foreground">Cash in (paid by clients)</p>
               <p className="font-display text-2xl font-bold">{fmt(todayIn)}</p>
             </div>
             <div className="rounded-lg border bg-muted/40 p-4">
-              <p className="text-sm text-muted-foreground">Cash out</p>
+              <p className="text-sm text-muted-foreground">Cash out (loans given)</p>
               <p className="font-display text-2xl font-bold">{fmt(todayOut)}</p>
             </div>
             <div className="rounded-lg border bg-primary/10 p-4">
-              <p className="text-sm text-muted-foreground">Cash at hand is</p>
+              <p className="text-sm text-muted-foreground">Cash at hand (remaining in office)</p>
               <p className="font-display text-2xl font-bold">{fmt(cashAtHand)}</p>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Clients without loans */}
+      <Card className="shadow-soft">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Clients without active loans ({noLoanClients.length})</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="max-h-96 overflow-auto rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-1/2">Client</TableHead>
+                  <TableHead className="w-1/3">Phone</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {noLoanClients.length === 0 ? (
+                  <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground py-6">All clients currently have a loan</TableCell></TableRow>
+                ) : noLoanClients.map((c) => (
+                  <TableRow key={c.id}>
+                    <TableCell className="font-medium truncate">{c.full_name}{c.last_name ? ` ${c.last_name}` : ""}</TableCell>
+                    <TableCell className="truncate">{c.phone ?? "—"}</TableCell>
+                    <TableCell className="text-right">
+                      <Button size="sm" onClick={() => nav(`/loans/new?client=${c.id}`)}>
+                        <Plus className="h-4 w-4 mr-1" /> Give loan
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
         </CardContent>
       </Card>
